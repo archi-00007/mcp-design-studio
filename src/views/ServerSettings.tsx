@@ -52,11 +52,11 @@ export function ServerSettings() {
     <main className="flex min-w-0 flex-1 flex-col bg-surface-sunken">
       {/* 顶栏：面包屑（一级标题 › 当前位置）+ 右侧动作组，高度与按钮规格同工具列表页 */}
       <header className="flex h-[52px] shrink-0 items-center gap-1.5 border-b border-line bg-white px-5">
-        <h1 className="text-[14px] font-semibold tracking-[-0.01em] text-ink">{activeServer.name}</h1>
-        <ChevronRightIcon size={12} className="text-ink-faint" />
-        <span className="text-[13.5px] text-ink-sub">Server 设置</span>
+        <h1 className="min-w-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-ink">{activeServer.name}</h1>
+        <ChevronRightIcon size={12} className="shrink-0 text-ink-faint" />
+        <span className="shrink-0 text-[13.5px] text-ink-sub">Server 设置</span>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <Btn variant="secondary" onClick={openImport} title="从 IR 备份还原（⌘I）">
             <ImportIcon size={14} />
             导入
@@ -69,7 +69,7 @@ export function ServerSettings() {
       </header>
 
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[1120px] items-start gap-6 px-6 py-5">
+        <div className="mx-auto flex w-full max-w-[1120px] flex-col items-start gap-6 px-6 py-5 xl:flex-row">
           {/* 左：表单 */}
           <div className="min-w-0 flex-1 space-y-3">
             <div className="flex items-start gap-1.5 rounded-ctl border border-line bg-white px-3 py-2">
@@ -184,7 +184,7 @@ export function ServerSettings() {
           </div>
 
           {/* 右：清单预览 */}
-          <aside className="sticky top-5 w-[360px] shrink-0 overflow-hidden rounded-card border border-line bg-white shadow-card">
+          <aside className="w-full shrink-0 overflow-hidden rounded-card border border-line bg-white shadow-card xl:sticky xl:top-5 xl:w-[360px]">
             <div className="flex h-[44px] items-center gap-2 border-b border-line px-3.5">
               <span className="text-[12.5px] font-semibold text-ink">预览</span>
               <Chip tone="brand">server.json</Chip>

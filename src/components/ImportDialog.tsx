@@ -218,7 +218,7 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
           }}
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
-          className={`flex h-[172px] cursor-pointer flex-col items-center justify-center gap-2 rounded-card border border-dashed transition-colors focus:outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/12 ${
+          className={`flex h-[172px] cursor-pointer flex-col items-center justify-center gap-2 rounded-card border border-dashed transition-colors focus:outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/[0.12] ${
             dragOver
               ? 'border-brand bg-brand-soft/60'
               : 'border-[#D5D9E0] bg-surface-sunken/60 hover:border-brand-line hover:bg-brand-soft/30'

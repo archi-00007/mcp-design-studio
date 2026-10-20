@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { XIcon } from './Icons'
 
 type BtnVariant = 'primary' | 'secondary' | 'ghost' | 'quiet'
@@ -106,11 +106,11 @@ export function Modal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[#16181D]/25" onClick={onClose} />
       <div
-        className="relative flex max-h-[86vh] flex-col overflow-hidden rounded-card border border-line bg-white shadow-modal"
-        style={{ width }}
+        className="relative flex max-h-[86vh] w-full flex-col overflow-hidden rounded-card border border-line bg-white shadow-modal"
+        style={{ maxWidth: width }}
       >
         <div className="flex items-start gap-3 border-b border-line-soft px-5 py-4">
           <div className="min-w-0">
@@ -148,6 +148,21 @@ export function useClickOutside<T extends HTMLElement>(active: boolean, onOut: (
     return () => document.removeEventListener('mousedown', handler)
   }, [active, onOut])
   return ref
+}
+
+/** 跟随断点变化的 matchMedia；用于宽屏/窄屏走两套布局的地方 */
+export function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
+
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches)
+    setMatches(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [query])
+
+  return matches
 }
 
 export function Field({

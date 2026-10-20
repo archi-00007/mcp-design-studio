@@ -3,6 +3,8 @@ import { useStore } from '../store'
 import {
   BoxIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
+  LayersIcon,
   ListIcon,
   MoreIcon,
   PencilIcon,
@@ -23,7 +25,11 @@ interface NavItem {
   onClick?: () => void
 }
 
-export function Sidebar() {
+/**
+ * 侧栏两态：展开 244px，收起 56px 图标栏。
+ * 收起态下 Server 切换菜单改成向右弹出的浮层，否则宽度会被 56px 的容器压扁。
+ */
+export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const { state, dispatch, activeServer } = useStore()
   const [menuOpen, setMenuOpen] = useState(false)
   const [rowMenu, setRowMenu] = useState<string | null>(null)
@@ -57,39 +63,90 @@ export function Sidebar() {
   ]
 
   return (
-    <aside className="flex w-[244px] shrink-0 flex-col border-r border-line bg-white">
+    <aside
+      className={`flex shrink-0 flex-col border-r border-line bg-white ${
+        collapsed ? 'w-[56px]' : 'w-[244px]'
+      }`}
+    >
       {/* 品牌 */}
-      <div className="flex h-[52px] shrink-0 items-center gap-2 px-3.5">
-        <div className="flex h-6 w-6 items-center justify-center rounded-[7px] bg-brand text-white">
-          <BoxIcon size={14} strokeWidth={1.7} />
-        </div>
-        <span className="text-[12.5px] font-semibold tracking-[-0.01em] text-ink">MCP Design Studio</span>
-        <Chip tone="mute" className="ml-auto">
-          v0.1
-        </Chip>
+      <div
+        className={`flex h-[52px] shrink-0 items-center gap-2 ${
+          collapsed ? 'justify-center px-2' : 'px-3.5'
+        }`}
+      >
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            title="展开侧栏"
+            aria-label="展开侧栏"
+            className="flex h-6 w-6 items-center justify-center rounded-[7px] bg-brand text-white transition-opacity hover:opacity-85"
+          >
+            <BoxIcon size={14} strokeWidth={1.7} />
+          </button>
+        ) : (
+          <>
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] bg-brand text-white">
+              <BoxIcon size={14} strokeWidth={1.7} />
+            </div>
+            <span className="truncate text-[12.5px] font-semibold tracking-[-0.01em] text-ink">
+              MCP Design Studio
+            </span>
+            <Chip tone="mute" className="ml-auto shrink-0">
+              v0.1
+            </Chip>
+            <button
+              type="button"
+              onClick={onToggle}
+              title="收起侧栏"
+              aria-label="收起侧栏"
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-ink-faint transition-colors hover:bg-surface-sunken hover:text-ink"
+            >
+              <ChevronRightIcon size={13} className="rotate-180" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Server 切换 */}
-      <div className="relative shrink-0 px-2.5 pb-2" ref={menuRef}>
-        <button
-          type="button"
-          onClick={() => setMenuOpen((v) => !v)}
-          className={`flex w-full items-center gap-1.5 rounded-ctl border px-2.5 py-2 text-left transition-colors ${
-            menuOpen ? 'border-brand-line bg-brand-soft/50' : 'border-line bg-white hover:border-ink-faint'
-          }`}
-        >
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold leading-[17px] text-ink">{activeServer.name}</div>
-            <div className="mt-0.5 text-[10.5px] leading-none text-ink-mute">{toolCount} 个工具</div>
-          </div>
-          <ChevronDownIcon
-            size={14}
-            className={`ml-auto shrink-0 text-ink-mute transition-transform ${menuOpen ? 'rotate-180' : ''}`}
-          />
-        </button>
+      <div className={`relative shrink-0 pb-2 ${collapsed ? 'px-1.5' : 'px-2.5'}`} ref={menuRef}>
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            title={`${activeServer.name} · ${toolCount} 个工具`}
+            aria-label={`切换 Server，当前 ${activeServer.name}`}
+            className={`flex h-9 w-full items-center justify-center rounded-ctl border transition-colors ${
+              menuOpen ? 'border-brand-line bg-brand-soft/50' : 'border-line bg-white hover:border-ink-faint'
+            }`}
+          >
+            <LayersIcon size={15} className="text-ink-sub" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            className={`flex w-full items-center gap-1.5 rounded-ctl border px-2.5 py-2 text-left transition-colors ${
+              menuOpen ? 'border-brand-line bg-brand-soft/50' : 'border-line bg-white hover:border-ink-faint'
+            }`}
+          >
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold leading-[17px] text-ink">{activeServer.name}</div>
+              <div className="mt-0.5 text-[10.5px] leading-none text-ink-mute">{toolCount} 个工具</div>
+            </div>
+            <ChevronDownIcon
+              size={14}
+              className={`ml-auto shrink-0 text-ink-mute transition-transform ${menuOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+        )}
 
         {menuOpen && (
-          <div className="absolute left-2.5 right-2.5 top-[calc(100%-2px)] z-30 overflow-visible rounded-[10px] border border-line bg-white shadow-pop">
+          <div
+            className={`absolute z-40 overflow-visible rounded-[10px] border border-line bg-white shadow-pop ${
+              collapsed ? 'left-[calc(100%+4px)] top-0 w-[224px]' : 'left-2.5 right-2.5 top-[calc(100%-2px)]'
+            }`}
+          >
             <div className="px-2.5 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.06em] text-ink-faint">
               切换 Server
             </div>
@@ -188,16 +245,21 @@ export function Sidebar() {
       <div className="mx-2.5 h-px shrink-0 bg-line-soft" />
 
       {/* 导航 */}
-      <nav className="shrink-0 px-2.5 py-2">
-        <div className="px-2.5 pb-1 text-[10px] font-medium uppercase tracking-[0.06em] text-ink-faint">设计</div>
+      <nav className={`shrink-0 py-2 ${collapsed ? 'px-1.5' : 'px-2.5'}`}>
+        {!collapsed && (
+          <div className="px-2.5 pb-1 text-[10px] font-medium uppercase tracking-[0.06em] text-ink-faint">设计</div>
+        )}
         {navItems.map((item) => (
           <button
             key={item.key}
             type="button"
             disabled={item.soon}
             onClick={item.onClick}
-            title={item.soon ? '即将支持' : undefined}
-            className={`flex w-full items-center gap-2 rounded-ctl px-2.5 py-[7px] text-left text-[12.5px] transition-colors ${
+            title={item.soon ? '即将支持' : collapsed ? item.label : undefined}
+            aria-label={collapsed ? item.label : undefined}
+            className={`flex w-full items-center rounded-ctl transition-colors ${
+              collapsed ? 'h-9 justify-center' : 'gap-2 px-2.5 py-[7px] text-left text-[12.5px]'
+            } ${
               item.active
                 ? 'bg-brand-soft font-medium text-brand'
                 : item.soon
@@ -206,13 +268,13 @@ export function Sidebar() {
             }`}
           >
             <span className={item.active ? 'text-brand' : 'text-ink-mute'}>{item.icon}</span>
-            {item.label}
-            {item.count !== undefined && (
+            {!collapsed && item.label}
+            {!collapsed && item.count !== undefined && (
               <span className={`ml-auto font-mono text-[10.5px] ${item.active ? 'text-brand' : 'text-ink-faint'}`}>
                 {item.count}
               </span>
             )}
-            {item.soon && (
+            {!collapsed && item.soon && (
               <span className="ml-auto rounded-[3px] border border-line px-1 py-[1px] text-[9px] text-ink-faint">
                 待接
               </span>
@@ -224,13 +286,15 @@ export function Sidebar() {
       <div className="flex-1" />
 
       {/* 字段基线 */}
-      <div className="shrink-0 p-2.5">
-        <div className="rounded-[10px] border border-line-soft bg-surface-sunken px-2.5 py-2">
-          <div className="text-[10px] font-medium uppercase tracking-[0.06em] text-ink-faint">字段基线</div>
-          <div className="mt-1 font-mono text-[11.5px] font-medium text-ink-sub">mcpdesc v0.8.0</div>
-          <div className="mt-0.5 text-[10.5px] leading-[15px] text-ink-mute">MCP 2025-06-18 · 仅 tools</div>
+      {!collapsed && (
+        <div className="shrink-0 p-2.5">
+          <div className="rounded-[10px] border border-line-soft bg-surface-sunken px-2.5 py-2">
+            <div className="text-[10px] font-medium uppercase tracking-[0.06em] text-ink-faint">字段基线</div>
+            <div className="mt-1 font-mono text-[11.5px] font-medium text-ink-sub">mcpdesc v0.8.0</div>
+            <div className="mt-0.5 text-[10.5px] leading-[15px] text-ink-mute">MCP 2025-06-18 · 仅 tools</div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 新建 / 重命名 */}
       <Modal

@@ -28,6 +28,52 @@ const outFile = path.join(outDir, 'mcp-design-studio.html')
 const log = (msg = '') => console.log(msg)
 const step = (n, total, msg) => log(`\n[${n}/${total}] ${msg}`)
 
+// ---------------------------------------------------------------- 运行环境
+// 项目常在 WSL 里开发。WSL 的 /usr/bin 下没有浏览器，但可以直接调起 Windows
+// 侧的 Chrome / Edge，只是传给它的文件和 profile 路径必须是盘符形式。
+// 若互操作被禁用（exec 报 EACCES），验证降级为 SKIP 而不是失败——不能因为
+// 环境限制把好产物判死。
+const wsl = (() => {
+  try {
+    return /microsoft|wsl/i.test(fs.readFileSync('/proc/version', 'utf8'))
+  } catch {
+    return false
+  }
+})()
+
+function wslPath(flag, p) {
+  const res = spawnSync('wslpath', [flag, p], { encoding: 'utf8' })
+  if (res.status === 0 && res.stdout.trim()) return res.stdout.trim()
+  const win = /^([A-Za-z]):\\(.*)$/.exec(p)
+  if (win) return `/mnt/${win[1].toLowerCase()}/` + win[2].replace(/\\/g, '/')
+  const posix = /^\/mnt\/([a-z])\/(.*)$/i.exec(p)
+  if (posix) return `${posix[1].toUpperCase()}:\\` + posix[2].replace(/\//g, '\\')
+  return p
+}
+
+function windowsTempDir() {
+  const res = spawnSync('cmd.exe', ['/c', 'echo %TEMP%'], { encoding: 'utf8', timeout: 15000 })
+  const out = (res.stdout || '').trim()
+  return res.status === 0 && /^[A-Za-z]:\\/.test(out) ? out.replace(/\\+$/, '') : 'C:\\Windows\\Temp'
+}
+
+function wslBrowserCandidates() {
+  const list = []
+  for (const base of ['/mnt/c/Program Files', '/mnt/c/Program Files (x86)']) {
+    list.push(path.join(base, 'Google/Chrome/Application/chrome.exe'))
+    list.push(path.join(base, 'Microsoft/Edge/Application/msedge.exe'))
+  }
+  try {
+    for (const user of fs.readdirSync('/mnt/c/Users')) {
+      list.push(path.join('/mnt/c/Users', user, 'AppData/Local/Google/Chrome/Application/chrome.exe'))
+      list.push(path.join('/mnt/c/Users', user, 'AppData/Local/Microsoft/Edge/Application/msedge.exe'))
+    }
+  } catch {
+    // 读不到 /mnt/c/Users 就算了，交给调用方判定 SKIP
+  }
+  return list
+}
+
 // ---------------------------------------------------------------- 1) 构建
 step(1, 4, skipBuild ? '跳过构建（--no-build），直接使用现有 dist' : '类型检查 + 构建（npm run build）')
 if (!skipBuild) {
@@ -115,7 +161,10 @@ function findBrowser() {
             '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
             '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
           ]
-        : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser']
+        : [
+            ...['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'],
+            ...(wsl ? wslBrowserCandidates() : []),
+          ]
   return candidates.find((p) => p && fs.existsSync(p)) || null
 }
 
@@ -123,8 +172,14 @@ function verifyRender(file) {
   const browser = findBrowser()
   if (!browser) return { skipped: true, reason: '未找到 Chrome / Edge' }
 
-  const profile = path.join(os.tmpdir(), `mds-verify-${Date.now()}`)
-  const fileUrl = 'file:///' + file.replace(/\\/g, '/')
+  // Windows 侧浏览器只认盘符路径，Linux 浏览器只认 /mnt 路径，二者不能混用
+  const winExe = /\.exe$/i.test(browser)
+  const target = winExe ? wslPath('-w', file) : file
+  const fileUrl = 'file:///' + target.replace(/\\/g, '/')
+  const stamp = Date.now()
+  const profile = winExe ? `${windowsTempDir()}\\mds-verify-${stamp}` : path.join(os.tmpdir(), `mds-verify-${stamp}`)
+  const profilePath = winExe ? wslPath('-u', profile) : profile
+
   let res
   try {
     res = spawnSync(
@@ -135,14 +190,22 @@ function verifyRender(file) {
         '--no-sandbox',
         '--no-first-run',
         `--user-data-dir=${profile}`,
-        '--virtual-time-budget=10000',
+        '--virtual-time-budget=15000',
         '--dump-dom',
         fileUrl,
       ],
       { encoding: 'utf8', timeout: 120000, maxBuffer: 64 * 1024 * 1024 },
     )
   } finally {
-    fs.rmSync(profile, { recursive: true, force: true })
+    fs.rmSync(profilePath, { recursive: true, force: true })
+  }
+
+  if (res.error) {
+    // 环境不让执行（沙箱 / 互操作关闭）不算产物有问题
+    if (['EACCES', 'EPERM', 'ENOEXEC'].includes(res.error.code)) {
+      return { skipped: true, reason: `当前环境不允许执行 ${path.basename(browser)}（${res.error.code}）` }
+    }
+    return { ok: false, reason: `浏览器启动失败：${res.error.message}` }
   }
 
   const dom = res.stdout || ''

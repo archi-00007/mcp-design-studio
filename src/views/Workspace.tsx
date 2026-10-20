@@ -122,10 +122,10 @@ export function Workspace() {
     <main className="flex min-w-0 flex-1 flex-col bg-surface-sunken">
       {/* 顶栏 */}
       <header className="flex h-[52px] shrink-0 items-center gap-1.5 border-b border-line bg-white px-5">
-        <h1 className="text-[14px] font-semibold tracking-[-0.01em] text-ink">{activeServer.name}</h1>
-        <ChevronRightIcon size={12} className="text-ink-faint" />
-        <span className="text-[13.5px] text-ink-sub">工具列表</span>
-        <div className="ml-auto flex items-center gap-2">
+        <h1 className="min-w-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-ink">{activeServer.name}</h1>
+        <ChevronRightIcon size={12} className="shrink-0 text-ink-faint" />
+        <span className="shrink-0 text-[13.5px] text-ink-sub">工具列表</span>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <Btn variant="secondary" onClick={openImport} title="从 IR 备份还原（⌘I）">
             <ImportIcon size={14} />
             导入
@@ -162,7 +162,7 @@ export function Workspace() {
                     setPage(1)
                   }}
                   placeholder="搜索英文名、中文名或描述"
-                  className="h-7 w-[240px] rounded-ctl border border-line bg-white pl-[27px] pr-2 text-[12px] transition-colors placeholder:text-ink-faint hover:border-[#D5D9E0] focus-ring"
+                  className="h-7 w-[180px] rounded-ctl border border-line bg-white pl-[27px] pr-2 text-[12px] transition-colors placeholder:text-ink-faint hover:border-[#D5D9E0] focus-ring xl:w-[240px]"
                 />
               </div>
               <Btn variant="primary" size="sm" onClick={() => dispatch({ type: 'tool/create' })}>
@@ -175,7 +175,7 @@ export function Workspace() {
           {/* 表体（滚动） */}
           {tools.length > 0 ? (
             <div className="scroll-thin min-h-0 flex-1 overflow-auto">
-              <table className="w-full table-fixed border-collapse">
+              <table className="w-full min-w-[900px] table-fixed border-collapse">
                 <colgroup>
                   <col style={{ width: 30 }} />
                   <col style={{ width: 186 }} />

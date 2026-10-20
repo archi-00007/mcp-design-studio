@@ -27,6 +27,11 @@ export default {
         },
         ok: '#2E9E72',
         warn: '#C6802A',
+        danger: {
+          DEFAULT: '#C0483E',
+          soft: '#FCEEEC',
+          line: '#E8C9C4',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],

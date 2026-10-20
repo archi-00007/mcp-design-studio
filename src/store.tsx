@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
+import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react'
 import { SEED_SERVER, SEED_TIMES, SEED_TITLES, RETIRED_SEED_SERVER_IDS } from './seed'
 import { cloneFields, normalizeFields } from './lib/model'
 import { normalizeTimestamp, now } from './lib/time'
@@ -8,7 +8,7 @@ import type { ServerDoc, Tool, Transport, View } from './types'
  * v2：schema 字段从扁平列表改为可嵌套的树（children / isItems）。
  * 结构不兼容旧草稿，换 key 让旧数据留在原地不动，需要时可从 v1 捞回。
  */
-const STORAGE_KEY = 'mcp-design-studio:v2'
+export const STORAGE_KEY = 'mcp-design-studio:v2'
 
 export interface State {
   servers: ServerDoc[]
@@ -383,18 +383,51 @@ const StoreCtx = createContext<StoreValue | null>(null)
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, hydrate)
 
+  /**
+   * 落盘：输入时每个字符都会 dispatch，逐字同步序列化整份文档会让大 Server 卡顿。
+   * 攒 300ms 再写；页面隐藏或卸载时立即 flush，避免最后那一拍编辑丢在关页瞬间。
+   */
+  const pending = useRef<{
+    servers: ServerDoc[]
+    activeServerId: string
+    lastToolId: string | null
+  } | null>(null)
+
   useEffect(() => {
-    const payload = {
+    pending.current = {
       servers: state.servers,
       activeServerId: state.activeServerId,
       lastToolId: state.lastToolId,
     }
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
-    } catch {
-      /* 配额满时静默降级，不阻断编辑 */
-    }
+    const timer = window.setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(pending.current))
+      } catch {
+        /* 配额满时静默降级，不阻断编辑 */
+      }
+    }, 300)
+    return () => window.clearTimeout(timer)
   }, [state.servers, state.activeServerId, state.lastToolId])
+
+  useEffect(() => {
+    const flush = () => {
+      if (!pending.current) return
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(pending.current))
+      } catch {
+        /* 同上次写盘：配额满不影响正在编辑的内容 */
+      }
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
 
   useEffect(() => {
     const hash =

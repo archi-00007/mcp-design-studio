@@ -1,10 +1,11 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import {
   appendChildTo,
   applyType,
   buildToolJson,
   countFieldsIn,
+  findField,
   formatExample,
   insertSiblingAfter,
   isJsonText,
@@ -29,8 +30,9 @@ import {
   XCircleIcon,
   XIcon,
 } from '../components/Icons'
-import { Btn, Chip, SectionTitle, useClickOutside } from '../components/ui'
+import { Btn, Chip, SectionTitle, useClickOutside, useMediaQuery } from '../components/ui'
 import { useExport } from '../components/ExportDialog'
+import { duplicateFieldIds, isToolNameTaken } from '../lib/validate'
 
 type SectionKey = 'input' | 'output'
 
@@ -49,6 +51,18 @@ export function ToolEditor() {
   const { dispatch, activeServer, activeTool } = useStore()
   const { openDialog } = useExport()
   const [mode, setMode] = useState<'edit' | 'view'>('edit')
+  // 1280 以上预览常驻右栏；窄屏收成抽屉，按需打开
+  const wide = useMediaQuery('(min-width: 1280px)')
+  const [previewOpen, setPreviewOpen] = useState(false)
+
+  useEffect(() => {
+    if (wide || !previewOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreviewOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [wide, previewOpen])
 
   if (!activeTool) {
     return (
@@ -95,9 +109,9 @@ export function ToolEditor() {
             工具列表
           </button>
           <span className="text-[11px] text-ink-faint">/</span>
-          <span className="font-mono text-[11.5px] font-medium text-ink">{activeTool.name}</span>
+          <span className="min-w-0 truncate font-mono text-[11.5px] font-medium text-ink">{activeTool.name}</span>
 
-          <div className="ml-auto flex items-center gap-2.5">
+          <div className="ml-auto flex shrink-0 items-center gap-2.5">
             <span className="flex items-center gap-1.5 text-[11px] text-ink-mute">
               <span className={`h-1.5 w-1.5 rounded-full ${readonly ? 'bg-ink-faint' : 'bg-ok'}`} />
               {readonly ? '只读' : '已自动保存'}
@@ -116,6 +130,12 @@ export function ToolEditor() {
                 </button>
               ))}
             </div>
+            {!wide && (
+              <Btn variant="ghost" size="sm" onClick={() => setPreviewOpen(true)} title="打开 JSON 预览">
+                <CodeIcon size={13} />
+                预览
+              </Btn>
+            )}
             <Btn variant="ghost" size="sm" onClick={openDialog} title="导出 Markdown 文档或 IR 备份（⌘E）">
               <ExportIcon size={13} />
               导出
@@ -138,18 +158,28 @@ export function ToolEditor() {
         </div>
       </section>
 
-      {/* 预览 */}
-      <PreviewPanel tool={activeTool} />
+      {/* 预览：宽屏常驻右栏，窄屏收成右侧抽屉 */}
+      {wide && <PreviewPanel tool={activeTool} />}
+      {!wide && previewOpen && (
+        <>
+          <div className="fixed inset-0 z-30 bg-[#16181D]/25" onClick={() => setPreviewOpen(false)} />
+          <div className="pop-in fixed inset-y-0 right-0 z-40 flex shadow-modal">
+            <PreviewPanel tool={activeTool} onClose={() => setPreviewOpen(false)} />
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
 function BasicSection({ tool, readonly }: { tool: Tool; readonly: boolean }) {
-  const { dispatch } = useStore()
+  const { dispatch, activeServer } = useStore()
   const patch = (p: Partial<Tool>) => dispatch({ type: 'tool/patch', toolId: tool.id, patch: p })
+  /** name 是工具在 MCP 里的唯一标识，撞名导出后会被客户端互相覆盖 */
+  const nameTaken = isToolNameTaken(activeServer.tools, tool.id, tool.name)
 
   /** 输入框基础样式：不设宽度，由外层决定是 flex-1 还是 w-full */
-  const cell = 'rounded-[6px] border border-transparent bg-transparent px-2 py-[6px] text-[12.5px] transition-colors hover:border-line focus:border-brand focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/12 disabled:cursor-default disabled:bg-surface-sunken disabled:text-ink-sub disabled:hover:border-transparent'
+  const cell = 'rounded-[6px] border border-transparent bg-transparent px-2 py-[6px] text-[12.5px] transition-colors hover:border-line focus:border-brand focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/[0.12] disabled:cursor-default disabled:bg-surface-sunken disabled:text-ink-sub disabled:hover:border-transparent'
   /** 标签与输入框同行：pt-[8px] 让标签基线与输入框首行文字对齐 */
   const label = 'w-[52px] shrink-0 pt-[8px] text-[11.5px] font-medium text-ink-sub'
 
@@ -160,17 +190,25 @@ function BasicSection({ tool, readonly }: { tool: Tool; readonly: boolean }) {
       <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
         <div className="flex items-start gap-2">
           <span className={label}>英文名</span>
-          <input
-            value={tool.name}
-            disabled={readonly}
-            autoFocus={tool.name.startsWith('new_tool_')}
-            onFocus={(e) => {
-              if (tool.name.startsWith('new_tool_')) e.currentTarget.select()
-            }}
-            onChange={(e) => patch({ name: e.target.value })}
-            placeholder="update_order_status"
-            className={`${cell} min-w-0 flex-1 border-line bg-white font-mono`}
-          />
+          <div className="min-w-0 flex-1">
+            <input
+              value={tool.name}
+              disabled={readonly}
+              autoFocus={tool.name.startsWith('new_tool_')}
+              onFocus={(e) => {
+                if (tool.name.startsWith('new_tool_')) e.currentTarget.select()
+              }}
+              onChange={(e) => patch({ name: e.target.value })}
+              placeholder="update_order_status"
+              title={nameTaken ? '与同 Server 下的工具重名' : undefined}
+              className={`${cell} w-full border-line bg-white font-mono ${nameTaken ? 'border-danger' : ''}`}
+            />
+            {nameTaken && (
+              <p className="mt-0.5 px-1 text-[10.5px] leading-[15px] text-danger">
+                与同 Server 下的工具重名，导出后 name 会冲突
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="flex items-start gap-2">
@@ -239,6 +277,15 @@ function SchemaSection({
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   /** 新增行后把焦点落到它的字段名上，省掉一次点击 */
   const [focusId, setFocusId] = useState<string | null>(null)
+  /** 同层重名的字段，行内标红：properties 的键重复时后写会覆盖前写 */
+  const dupIds = useMemo(() => duplicateFieldIds(fields), [fields])
+
+  /**
+   * 回调都走 ref 取最新字段树：这样它们的引用能不随输入变化，
+   * 配合 SchemaRow 的 memo，改一行只重渲染那一行。
+   */
+  const fieldsRef = useRef(fields)
+  fieldsRef.current = fields
 
   // 焦点只够用一次：折叠展开会重新挂载子行，残留的标记会再次抢焦点
   useEffect(() => {
@@ -247,13 +294,16 @@ function SchemaSection({
     return () => window.clearTimeout(t)
   }, [focusId])
 
-  const setFields = (next: SchemaField[], silent = false) =>
-    dispatch({
-      type: 'tool/patch',
-      toolId: tool.id,
-      patch: { [section]: next } as Partial<Tool>,
-      silent,
-    })
+  const setFields = useCallback(
+    (next: SchemaField[], silent = false) =>
+      dispatch({
+        type: 'tool/patch',
+        toolId: tool.id,
+        patch: { [section]: next } as Partial<Tool>,
+        silent,
+      }),
+    [dispatch, tool.id, section],
+  )
 
   /**
    * 空 schema 默认给一行空白字段，打开就能直接填，不用先找地方加。
@@ -269,61 +319,87 @@ function SchemaSection({
     if (fields.length === 0) setFields([newField()], true)
   }, [tool.id, section, readonly, fields.length])
 
-  const updateField = (id: string, patch: Partial<SchemaField>) =>
-    setFields(updateFieldInTree(fields, id, patch))
+  const updateField = useCallback(
+    (id: string, patch: Partial<SchemaField>) =>
+      setFields(updateFieldInTree(fieldsRef.current, id, patch)),
+    [setFields],
+  )
 
-  const removeField = (id: string) => {
-    setFields(removeFieldFromTree(fields, id))
-    if (focusId === id) setFocusId(null)
-  }
+  /** 改类型要拿最新字段（children / enum 可能刚变过），不能依赖渲染时的闭包 */
+  const changeType = useCallback(
+    (field: SchemaField, type: JsonSchemaType) => {
+      const current = findField(fieldsRef.current, field.id) ?? field
+      setFields(updateFieldInTree(fieldsRef.current, current.id, applyType(current, type)))
+    },
+    [setFields],
+  )
 
-  const toggle = (id: string) =>
+  const removeField = useCallback(
+    (id: string) => {
+      setFields(removeFieldFromTree(fieldsRef.current, id))
+      setFocusId((cur) => (cur === id ? null : cur))
+    },
+    [setFields],
+  )
+
+  const toggle = useCallback((id: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
+  }, [])
 
-  const expand = (id: string) =>
+  const expand = useCallback((id: string) => {
     setCollapsed((prev) => {
       if (!prev.has(id)) return prev
       const next = new Set(prev)
       next.delete(id)
       return next
     })
+  }, [])
+
+  const clearFocus = useCallback(() => setFocusId(null), [])
 
   /** 加号默认动作：在被点的那一行后面插入同级字段 */
-  const addSibling = (id: string) => {
-    const created = newField()
-    setFields(insertSiblingAfter(fields, id, created))
-    setFocusId(created.id)
-  }
+  const addSibling = useCallback(
+    (id: string) => {
+      const created = newField()
+      setFields(insertSiblingAfter(fieldsRef.current, id, created))
+      setFocusId(created.id)
+    },
+    [setFields],
+  )
 
   /** 加子级：object 直接挂；array 落到 items 行，items 还是标量就先提升为 object */
-  const addChild = (field: SchemaField) => {
-    const created = newField()
+  const addChild = useCallback(
+    (field: SchemaField) => {
+      const current = findField(fieldsRef.current, field.id) ?? field
+      const created = newField()
 
-    if (field.type === 'object') {
-      setFields(appendChildTo(fields, field.id, created))
-      expand(field.id)
+      if (current.type === 'object') {
+        setFields(appendChildTo(fieldsRef.current, current.id, created))
+        expand(current.id)
+        setFocusId(created.id)
+        return
+      }
+
+      // array：先确保有 items 承载行，再往元素结构里加字段
+      let base = fieldsRef.current
+      let items = current.children.find((c) => c.isItems)
+      if (!items) {
+        items = newItemsField()
+        base = updateFieldInTree(base, current.id, { children: [...current.children, items] })
+      }
+      if (items.type !== 'object') base = updateFieldInTree(base, items.id, { type: 'object', enumValues: [] })
+      setFields(appendChildTo(base, items.id, created))
+      expand(items.id)
+      expand(current.id)
       setFocusId(created.id)
-      return
-    }
-
-    // array：先确保有 items 承载行，再往元素结构里加字段
-    let base = fields
-    let items = field.children.find((c) => c.isItems)
-    if (!items) {
-      items = newItemsField()
-      base = updateFieldInTree(fields, field.id, { children: [...field.children, items] })
-    }
-    if (items.type !== 'object') base = updateFieldInTree(base, items.id, { type: 'object', enumValues: [] })
-    setFields(appendChildTo(base, items.id, created))
-    expand(items.id)
-    expand(field.id)
-    setFocusId(created.id)
-  }
+    },
+    [setFields, expand],
+  )
 
   /** 查看态不显示还没填英文名的草稿行——它们本来就不进 schema */
   const shown = readonly ? stripDrafts(fields) : fields
@@ -346,13 +422,14 @@ function SchemaSection({
             branch={branch}
             open={open}
             focus={focusId === field.id}
-            onFocused={() => setFocusId(null)}
-            onToggle={() => toggle(field.id)}
-            onPatch={(patch) => updateField(field.id, patch)}
-            onChangeType={(type) => updateField(field.id, applyType(field, type))}
-            onAddSibling={() => addSibling(field.id)}
-            onAddChild={() => addChild(field)}
-            onRemove={() => removeField(field.id)}
+            conflict={dupIds.has(field.id)}
+            onFocusClear={clearFocus}
+            onToggle={toggle}
+            onPatch={updateField}
+            onChangeType={changeType}
+            onAddSibling={addSibling}
+            onAddChild={addChild}
+            onRemove={removeField}
           />
           {branch &&
             open &&
@@ -605,38 +682,45 @@ function ExamplesCard({
   )
 }
 
-/** 一行字段。缩进只作用于名称列，类型 / 必填 / 说明保持固定列位 */
-function SchemaRow({
-  field,
-  depth,
-  readonly,
-  branch,
-  open,
-  focus,
-  onFocused,
-  onToggle,
-  onPatch,
-  onChangeType,
-  onAddSibling,
-  onAddChild,
-  onRemove,
-}: {
+interface SchemaRowProps {
   field: SchemaField
   depth: number
   readonly: boolean
   branch: boolean
   open: boolean
   focus: boolean
-  onFocused: () => void
-  onToggle: () => void
-  onPatch: (patch: Partial<SchemaField>) => void
-  onChangeType: (type: JsonSchemaType) => void
-  onAddSibling: () => void
-  onAddChild: () => void
-  onRemove: () => void
-}) {
+  conflict: boolean
+  onFocusClear: () => void
+  onToggle: (id: string) => void
+  onPatch: (id: string, patch: Partial<SchemaField>) => void
+  onChangeType: (field: SchemaField, type: JsonSchemaType) => void
+  onAddSibling: (id: string) => void
+  onAddChild: (field: SchemaField) => void
+  onRemove: (id: string) => void
+}
+
+/**
+ * 一行字段。缩进只作用于名称列，类型 / 必填 / 说明保持固定列位。
+ * 包 memo：父层每次输入都会重建整棵树，字段对象引用没变就不该重渲染。
+ */
+const SchemaRow = memo(function SchemaRow({
+  field,
+  depth,
+  readonly,
+  branch,
+  open,
+  focus,
+  conflict,
+  onFocusClear,
+  onToggle,
+  onPatch,
+  onChangeType,
+  onAddSibling,
+  onAddChild,
+  onRemove,
+}: SchemaRowProps) {
   const cell =
-    'w-full rounded-[6px] border border-transparent bg-transparent px-1.5 py-[4px] text-[11.5px] transition-colors hover:border-line focus:border-brand focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/12 disabled:cursor-default disabled:bg-surface-sunken/70 disabled:text-ink-sub'
+    'w-full rounded-[6px] border border-transparent bg-transparent px-1.5 py-[4px] text-[11.5px] transition-colors hover:border-line focus:border-brand focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/[0.12] disabled:cursor-default disabled:bg-surface-sunken/70 disabled:text-ink-sub'
 
   return (
     <div
@@ -649,7 +733,7 @@ function SchemaRow({
         {branch ? (
           <button
             type="button"
-            onClick={onToggle}
+            onClick={() => onToggle(field.id)}
             className="mr-[2px] flex h-[18px] w-[14px] shrink-0 items-center justify-center rounded-[3px] text-ink-faint transition-colors hover:bg-line/70 hover:text-ink-sub"
             title={open ? '收起子级' : '展开子级'}
           >
@@ -676,11 +760,12 @@ function SchemaRow({
             disabled={readonly}
             autoFocus={focus}
             onFocus={() => {
-              if (focus) onFocused()
+              if (focus) onFocusClear()
             }}
-            onChange={(e) => onPatch({ name: e.target.value })}
+            onChange={(e) => onPatch(field.id, { name: e.target.value })}
             placeholder="order_id"
-            className={`${cell} font-mono`}
+            title={conflict ? '同层已有同名字段，导出后会互相覆盖' : undefined}
+            className={`${cell} font-mono ${conflict ? 'border-danger bg-danger-soft/40' : ''}`}
           />
         )}
       </div>
@@ -691,7 +776,7 @@ function SchemaRow({
         <input
           value={field.title}
           disabled={readonly}
-          onChange={(e) => onPatch({ title: e.target.value })}
+          onChange={(e) => onPatch(field.id, { title: e.target.value })}
           placeholder="中文名"
           className={cell}
         />
@@ -700,8 +785,8 @@ function SchemaRow({
       <TypeButton
         field={field}
         readonly={readonly}
-        onChangeType={onChangeType}
-        onChangeEnums={(enumValues) => onPatch({ enumValues })}
+        onChangeType={(type) => onChangeType(field, type)}
+        onChangeEnums={(enumValues) => onPatch(field.id, { enumValues })}
       />
 
       {field.isItems ? (
@@ -710,7 +795,7 @@ function SchemaRow({
         <button
           type="button"
           disabled={readonly}
-          onClick={() => onPatch({ required: !field.required })}
+          onClick={() => onPatch(field.id, { required: !field.required })}
           className="flex items-center text-left disabled:cursor-default"
           aria-label={field.required ? '必填，点击取消' : '非必填，点击设为必填'}
           aria-pressed={field.required}
@@ -728,7 +813,7 @@ function SchemaRow({
       <input
         value={field.description}
         disabled={readonly}
-        onChange={(e) => onPatch({ description: e.target.value })}
+        onChange={(e) => onPatch(field.id, { description: e.target.value })}
         placeholder={field.isItems ? '元素整体的含义' : '这个字段的含义、格式或取值范围'}
         className={cell}
       />
@@ -739,15 +824,15 @@ function SchemaRow({
         <AddButton
           isItems={!!field.isItems}
           branch={branch}
-          onAddSibling={onAddSibling}
-          onAddChild={onAddChild}
+          onAddSibling={() => onAddSibling(field.id)}
+          onAddChild={() => onAddChild(field)}
         />
       )}
 
-      {field.isItems || readonly ? <span /> : <RemoveButton onConfirm={onRemove} />}
+      {field.isItems || readonly ? <span /> : <RemoveButton onConfirm={() => onRemove(field.id)} />}
     </div>
   )
-}
+})
 
 /** 去掉没填英文名的草稿行（含嵌套），只用于只读展示 */
 function stripDrafts(fields: SchemaField[]): SchemaField[] {
@@ -967,10 +1052,17 @@ function TypeButton({
 
   const open = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (readonly) return
+    // 再点一次按钮收起，跟「点外面关闭」同一套手感
+    if (pos) {
+      setPos(null)
+      return
+    }
     const r = e.currentTarget.getBoundingClientRect()
     const width = 440
-    const x = Math.min(r.left, window.innerWidth - width - 16)
-    const y = Math.min(r.bottom + 6, window.innerHeight - 420)
+    const edge = 12
+    // 上下左右都夹到视口内：窗口矮的时候 r.bottom + 6 之外还得留出面板高度
+    const x = Math.max(edge, Math.min(r.left, window.innerWidth - width - edge))
+    const y = Math.max(edge, Math.min(r.bottom + 6, window.innerHeight - 420))
     setPos({ x, y })
     setDraft('')
   }
@@ -1141,9 +1233,11 @@ function AnnotationsSection({ tool, readonly }: { tool: Tool; readonly: boolean 
   )
 }
 
-function PreviewPanel({ tool }: { tool: Tool }) {
+function PreviewPanel({ tool, onClose }: { tool: Tool; onClose?: () => void }) {
   const [copied, setCopied] = useState(false)
-  const json = useMemo(() => JSON.stringify(buildToolJson(tool), null, 2), [tool])
+  // 先把表单更新出去，预览让一帧再算：stringify + 正则高亮对长 schema 不便宜
+  const deferredTool = useDeferredValue(tool)
+  const json = useMemo(() => JSON.stringify(buildToolJson(deferredTool), null, 2), [deferredTool])
   const html = useMemo(() => highlight(json), [json])
   const timer = useRef<number | null>(null)
 
@@ -1152,7 +1246,7 @@ function PreviewPanel({ tool }: { tool: Tool }) {
   }, [])
 
   return (
-    <aside className="flex w-[400px] shrink-0 flex-col border-l border-line bg-[#FBFBFC]">
+    <aside className="flex h-full w-[400px] max-w-[85vw] shrink-0 flex-col border-l border-line bg-[#FBFBFC]">
       <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4">
         <span className="text-[12.5px] font-semibold text-ink">预览</span>
         <Chip tone="brand">JSON</Chip>
@@ -1172,6 +1266,17 @@ function PreviewPanel({ tool }: { tool: Tool }) {
         >
           {copied ? '已复制' : '复制'}
         </button>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            title="关闭预览"
+            aria-label="关闭预览"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-ink-mute transition-colors hover:bg-white hover:text-ink"
+          >
+            <XIcon size={14} />
+          </button>
+        )}
       </div>
 
       <div className="scroll-thin min-h-0 flex-1 overflow-auto px-4 py-3">

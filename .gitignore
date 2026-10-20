@@ -1,23 +1,13 @@
 # 依赖
 node_modules/
 
-# 构建产物
+# 构建产物（由 npm run build / npm run release 生成，不入库）
 dist/
 release/
-*.7z
+.vite-temp/
 
-# 编辑器/工具缓存
-.workbuddy/
-.vite/
+# 本地与系统杂项
 *.local
-
-# 环境与密钥
-.env
-.env.*
-*.pem
-*.key
-
-# 系统文件
+*.log
 .DS_Store
 Thumbs.db
-*.log
