@@ -5,9 +5,20 @@ node_modules/
 dist/
 release/
 .vite-temp/
+*.7z
 
-# 本地与系统杂项
+# 编辑器/工具缓存
+.workbuddy/
+.vite/
 *.local
-*.log
+
+# 环境与密钥
+.env
+.env.*
+*.pem
+*.key
+
+# 系统文件
 .DS_Store
 Thumbs.db
+*.log
